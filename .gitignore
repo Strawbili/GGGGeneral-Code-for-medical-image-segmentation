@@ -1,0 +1,49 @@
+# 忽略 Python 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+
+# 忽略 nnUNet 的日志和结果文件
+logs/
+Experiment_Result_Evaluation/logs/
+Experiment_Result_Evaluation/*.xlsx
+Experiment_Result_Evaluation/*.txt
+Experiment_Result_Processing/logs/
+Experiment_Result_Processing/*.png
+
+# 忽略 wandb 的本地运行文件和缓存
+wandb/
+wandb-media/
+*.wandb
+
+# 忽略 Conda 环境文件
+*.yaml
+*.lock
+
+# 忽略临时文件
+*.tmp
+*.temp
+
+# 忽略数据和模型文件
+*.nii
+*.nii.gz
+*.npy
+*.pkl
+*.h5
+
+# 忽略实验结果处理文件
+Experiment_Result_Evaluation/merged_data.xlsx
+Experiment_Result_Evaluation/*.log
+
+# 忽略 IDE 和操作系统特定的文件
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 忽略其他临时文件
+*.bak
+*.swp
