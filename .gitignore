@@ -47,3 +47,5 @@ desktop.ini
 # 忽略其他临时文件
 *.bak
 *.swp
+*.txt
+*.xlsx
