@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from medpy.metric.binary import dc, hd95
+from medpy.metric.binary import dc
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import argparse
 from PIL import Image
@@ -12,28 +12,22 @@ def load_png_file(filepath):
     return np.array(img)
 
 def calculate_metrics(gt, pred, label):
-    """计算单个标签的 Dice, HD95 和 IoU，保留情况3的逻辑"""
+    """计算单个标签的 Dice 和 IoU"""
     gt_binary = (gt == label).astype(np.uint8)
     pred_binary = (pred == label).astype(np.uint8)
 
     # 计算 Dice
     dice_score = dc(pred_binary, gt_binary)
 
-    # 计算 HD95
-    try:
-        hd95_distance = hd95(pred_binary, gt_binary)
-    except RuntimeError:
-        hd95_distance = np.inf  # 如果 HD95 计算失败，设为无穷大
-
     # 计算 IoU
     intersection = np.sum(gt_binary * pred_binary)  # 交集
     union = np.sum(gt_binary) + np.sum(pred_binary) - intersection  # 并集
     iou_score = intersection / union if union != 0 else 0  # 避免除以 0
 
-    return dice_score, hd95_distance, iou_score
+    return dice_score, iou_score
 
 def process_file(gt_file, pred_file, gt_dir, pred_dir, label):
-    """处理单个文件，计算单个标签的 Dice、HD95 和 IoU"""
+    """处理单个文件，计算单个标签的 Dice 和 IoU"""
     gt_path = os.path.join(gt_dir, gt_file)
     pred_path = os.path.join(pred_dir, pred_file)
 
@@ -42,19 +36,18 @@ def process_file(gt_file, pred_file, gt_dir, pred_dir, label):
 
     file_results = {'file': gt_file}
 
-    dice, hd95_value, iou_value = calculate_metrics(gt_data, pred_data, label)
+    dice, iou_value = calculate_metrics(gt_data, pred_data, label)
     file_results[f'dice_label_{label}'] = dice
-    file_results[f'hd95_label_{label}'] = hd95_value
     file_results[f'iou_label_{label}'] = iou_value  # 添加 IoU 结果
 
     # 打印文件处理结果
     print(f"处理完成文件: {gt_file}")
-    print(f"标签: {label}, Dice: {dice}, HD95: {hd95_value}, IoU: {iou_value}")
+    print(f"标签: {label}, Dice: {dice}, IoU: {iou_value}")
 
     return file_results
 
 def evaluate_segmentation(gt_dir, pred_dir, label=1, num_workers=4, output_file_txt="results.txt", output_file_xlsx="results.xlsx"):
-    """评估分割结果，计算单个标签的 Dice, HD95 和 IoU，并保存结果到 .txt 和 .xlsx 文件"""
+    """评估分割结果，计算单个标签的 Dice 和 IoU，并保存结果到 .txt 和 .xlsx 文件"""
     # 获取 .png 文件
     gt_files = sorted([f for f in os.listdir(gt_dir) if f.endswith('.png')])
     pred_files = sorted([f for f in os.listdir(pred_dir) if f.endswith('.png')])
@@ -89,12 +82,6 @@ def evaluate_segmentation(gt_dir, pred_dir, label=1, num_workers=4, output_file_
     else:
         print(f"警告: 未找到 dice_label_{label} 列。")
 
-    if f'hd95_label_{label}' in df_results.columns:
-        summary[f'hd95_label_{label}_mean'] = df_results[f'hd95_label_{label}'].mean()
-        summary[f'hd95_label_{label}_std'] = df_results[f'hd95_label_{label}'].std()
-    else:
-        print(f"警告: 未找到 hd95_label_{label} 列。")
-
     if f'iou_label_{label}' in df_results.columns:
         summary[f'iou_label_{label}_mean'] = df_results[f'iou_label_{label}'].mean()
         summary[f'iou_label_{label}_std'] = df_results[f'iou_label_{label}'].std()
@@ -103,23 +90,34 @@ def evaluate_segmentation(gt_dir, pred_dir, label=1, num_workers=4, output_file_
 
     df_summary = pd.DataFrame([summary])
 
+    total_variance = {
+        f'dice_label{label}_variance': df_results[f'dice_label_{label}'].var(),
+        f'iou_label{label}_variance': df_results[f'iou_label_{label}'].var(),
+    }
+
+    df_total_variance = pd.DataFrame([total_variance])
+
     # 保存结果到 .txt 文件
     with open(output_file_txt, "w") as f:
         f.write("每个文件的评估结果：\n")
         f.write(df_results.to_string())
-        f.write("\n\n总体评估均值和方差：\n")
+        f.write("\n\n总体评估均值、方差：\n")
         f.write(df_summary.to_string())
+        f.write("\n\n所有折的总方差：\n")
+        f.write(df_total_variance.to_string())
 
     with pd.ExcelWriter(output_file_xlsx, engine='openpyxl') as writer:
         df_results.to_excel(writer, sheet_name="每个文件的评估结果", index=False)
         df_summary.to_excel(writer, sheet_name="总体评估均值和方差", index=False)
+        df_total_variance.to_excel(writer, sheet_name="所有折的总方差", index=False)
 
-    return df_results, df_summary
+    return df_results, df_summary, df_total_variance
 
 def run_cross_validation(base_gt_dir, base_pred_dir, label=1, num_workers=4, output_dir="./", output_file_name="results", dataset_name=""):
     """5折交叉验证"""
     all_fold_results = []
     all_fold_summaries = []
+    all_fold_total_variances = []
 
     # 遍历 5 个折
     for fold in range(5):
@@ -130,7 +128,7 @@ def run_cross_validation(base_gt_dir, base_pred_dir, label=1, num_workers=4, out
         output_file_txt = os.path.join(output_dir, f"{dataset_name}_fold{fold}_{output_file_name}.txt")
         output_file_xlsx = os.path.join(output_dir, f"{dataset_name}_fold{fold}_{output_file_name}.xlsx")
 
-        fold_results, fold_summary = evaluate_segmentation(
+        fold_results, fold_summary, fold_total_variance = evaluate_segmentation(
             gt_dir=gt_dir,
             pred_dir=pred_dir,
             label=label,
@@ -142,21 +140,34 @@ def run_cross_validation(base_gt_dir, base_pred_dir, label=1, num_workers=4, out
         # 汇总每一折的结果
         all_fold_results.append(fold_results)
         all_fold_summaries.append(fold_summary)
+        all_fold_total_variances.append(fold_total_variance)
 
     # 合并所有折的结果
     df_all_results = pd.concat(all_fold_results, ignore_index=True)
+    
+    for metric in ['dice_label', 'iou_label']:
+        metric_label = f"{metric}_{label}"
+        mean_value = df_all_results[metric_label].mean()
+        std_value = df_all_results[metric_label].std()
+        print(f"{metric_label} 的均值: {mean_value}, 方差: {std_value}")
+        summary_df = pd.DataFrame([{f"{metric_label}_all": mean_value, f"{metric_label}_std_all": std_value}])
+        all_fold_summaries.append(summary_df)
+
     df_all_summaries = pd.concat(all_fold_summaries, ignore_index=True)
+    df_all_total_variances = pd.concat(all_fold_total_variances, ignore_index=True)
 
     # 保存所有折的汇总结果
     df_all_results.to_excel(os.path.join(output_dir, f"{dataset_name}_all_folds_{output_file_name}.xlsx"), sheet_name="所有折的评估结果", index=False)
     df_all_summaries.to_excel(os.path.join(output_dir, f"{dataset_name}_all_folds_{output_file_name}_summary.xlsx"), sheet_name="所有折的总体评估均值和方差", index=False)
+    df_all_total_variances.to_excel(os.path.join(output_dir, f"{dataset_name}_all_folds_{output_file_name}_total_variance.xlsx"), sheet_name="所有折的总方差", index=False)
 
-    return df_all_results, df_all_summaries
+    print("Evaluation Finished! The results have been output to the folder:", output_dir)
+    return df_all_results, df_all_summaries, df_all_total_variances
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="5折交叉验证分割评估脚本")
-    parser.add_argument('--dataset_name', type=str, required=True, help='数据集名称')
-    parser.add_argument('--trainer_name', type=str, required=True, help='训练网络的名字')
+    parser.add_argument('--dataset_name', type=str, default="Dataset121_Kvasir", required=False, help='数据集名称')
+    parser.add_argument('--trainer_name', type=str, default="nnUNetTrainer__nnUNetPlans__2d", required=False, help='训练网络的名字')
     parser.add_argument('--label', type=int, default=1, help='评估的标签')
     parser.add_argument('--num_workers', type=int, default=24, help='并行的线程数量')
     parser.add_argument('--output_file_name', type=str, default='Evaluation', help='输出结果的文本文件')
@@ -168,7 +179,7 @@ if __name__ == "__main__":
     base_gt_dir = os.path.join("/home/SSD1_4T/datasets/nnUNet_raw/nnUNet_preprocessed", args.dataset_name, "gt_segmentations")
     base_pred_dir = os.path.join("/home/lyh/ExperimentsNResults", args.dataset_name, args.trainer_name)
     output_dir = os.path.join(args.output_dir, args.dataset_name, args.trainer_name)
-    output_file_name = args.output_file_name+args.trainer_name
+    output_file_name = args.output_file_name + args.trainer_name
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

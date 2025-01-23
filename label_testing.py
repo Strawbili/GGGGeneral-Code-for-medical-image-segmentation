@@ -42,8 +42,8 @@ prediction_path = search_image_in_folders(image_name, prediction_path)
 gt_image = load_image(gt_path)
 prediction_image = load_image(prediction_path)
 
-np.unique(gt_image)
-np.unique(prediction_image)
+print("gt_image(unique):", np.unique(gt_image))
+print("prediction(unique):", np.unique(prediction_image))
 # 显示图像（可以跳过这部分，依据实际需求）
 if gt_image:
     gt_image.show()  # 显示 ground truth 图像
