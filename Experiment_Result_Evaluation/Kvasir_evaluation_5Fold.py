@@ -167,7 +167,7 @@ def run_cross_validation(base_gt_dir, base_pred_dir, label=1, num_workers=4, out
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="5折交叉验证分割评估脚本")
     parser.add_argument('--dataset_name', type=str, default="Dataset121_Kvasir", required=False, help='数据集名称')
-    parser.add_argument('--trainer_name', type=str, default="nnUNetTrainer__nnUNetPlans__2d", required=False, help='训练网络的名字')
+    parser.add_argument('--trainer_name', type=str, default="nnUNetTrainer_multichannel20_ZI__nnUNetPlans__2d", required=False, help='训练网络的名字')
     parser.add_argument('--label', type=int, default=1, help='评估的标签')
     parser.add_argument('--num_workers', type=int, default=24, help='并行的线程数量')
     parser.add_argument('--output_file_name', type=str, default='Evaluation', help='输出结果的文本文件')
